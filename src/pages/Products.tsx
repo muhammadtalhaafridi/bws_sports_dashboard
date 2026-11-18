@@ -1,15 +1,18 @@
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Pencil, Plus, Star, Trash2 } from "lucide-react";
 import toast from "react-hot-toast";
 import { Link } from "react-router-dom";
+import { categoryKeys, useCategories } from "../api/category/queries";
+import { deleteProduct } from "../api/product/fetcher";
+import { productKeys, useProducts } from "../api/product/queries";
+import { statsKeys } from "../api/stats/queries";
 import { ProductImage } from "../components/ProductImage";
 import { SearchBox } from "../components/SearchBox";
 import { EmptyState, ErrorState, PageTitle, Pager, Spinner } from "../components/ui";
-import { useCategories } from "../hooks/useCategories";
 import { useListParams } from "../hooks/useListParams";
-import { api, getErrorMessage } from "../lib/api";
+import { getErrorMessage } from "../lib/api";
 import { formatPrice } from "../lib/format";
-import type { Pagination, Product } from "../lib/types";
+import type { Product } from "../lib/types";
 
 export function Products() {
   const { params, search, page, searchText, setSearchText, set } = useListParams();
@@ -18,24 +21,16 @@ export function Products() {
   const queryClient = useQueryClient();
   const { data: categories } = useCategories();
 
-  const { data, isLoading, isError, error, refetch } = useQuery({
-    queryKey: ["products", { search, category, sort, page }],
-    queryFn: async () =>
-      (
-        await api.get<{ products: Product[]; pagination: Pagination }>("/products", {
-          params: { search: search || undefined, category: category || undefined, sort, page, limit: 15 },
-        })
-      ).data,
-    placeholderData: keepPreviousData,
-  });
+  const { data, isLoading, isError, error, refetch } = useProducts({ search, category, sort, page, limit: 15 });
 
   const remove = useMutation({
-    mutationFn: async (id: number) => api.delete(`/products/${id}`),
-    onSuccess: () => {
-      toast.success("Product deleted");
-      queryClient.invalidateQueries({ queryKey: ["products"] });
-      queryClient.invalidateQueries({ queryKey: ["categories"] });
-      queryClient.invalidateQueries({ queryKey: ["stats"] });
+    mutationFn: (product: Product) => deleteProduct(product.id),
+    onSuccess: async (_res, product) => {
+      // Reload the list on screen first, so the toast appears once the row is gone.
+      await queryClient.refetchQueries({ queryKey: productKeys.all, type: "active" });
+      queryClient.invalidateQueries({ queryKey: categoryKeys.all });
+      queryClient.invalidateQueries({ queryKey: statsKeys.all });
+      toast.success(`"${product.name}" deleted`);
     },
     onError: (err) => toast.error(getErrorMessage(err)),
   });
@@ -129,10 +124,8 @@ export function Products() {
                         <button
                           className="icon-btn danger"
                           aria-label={`Delete ${p.name}`}
-                          disabled={remove.isPending}
-                          onClick={() => {
-                            if (confirm(`Delete "${p.name}"? This cannot be undone.`)) remove.mutate(p.id);
-                          }}
+                          disabled={remove.isPending && remove.variables?.id === p.id}
+                          onClick={() => remove.mutate(p)}
                         >
                           <Trash2 size={16} />
                         </button>

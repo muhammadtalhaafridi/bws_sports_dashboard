@@ -1,13 +1,16 @@
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Mail, MailOpen, Reply, Trash2 } from "lucide-react";
 import { useState } from "react";
 import toast from "react-hot-toast";
+import { deleteMessage, setMessageRead } from "../api/message/fetcher";
+import { messageKeys, useMessages } from "../api/message/queries";
+import { statsKeys } from "../api/stats/queries";
 import { SearchBox } from "../components/SearchBox";
 import { EmptyState, ErrorState, PageTitle, Pager, Spinner } from "../components/ui";
 import { useListParams } from "../hooks/useListParams";
-import { api, getErrorMessage } from "../lib/api";
+import { getErrorMessage } from "../lib/api";
 import { formatDateTime } from "../lib/format";
-import type { Message, Pagination } from "../lib/types";
+import type { Message } from "../lib/types";
 
 export function Messages() {
   const { params, search, page, searchText, setSearchText, set } = useListParams();
@@ -15,30 +18,21 @@ export function Messages() {
   const queryClient = useQueryClient();
   const [openId, setOpenId] = useState<number | null>(null);
 
-  const { data, isLoading, isError, error, refetch } = useQuery({
-    queryKey: ["messages", { search, unread, page }],
-    queryFn: async () =>
-      (
-        await api.get<{ messages: Message[]; pagination: Pagination }>("/messages", {
-          params: { search: search || undefined, unread: unread || undefined, page },
-        })
-      ).data,
-    placeholderData: keepPreviousData,
-  });
+  const { data, isLoading, isError, error, refetch } = useMessages({ search, unread, page });
 
   const refresh = () => {
-    queryClient.invalidateQueries({ queryKey: ["messages"] });
-    queryClient.invalidateQueries({ queryKey: ["stats"] });
+    queryClient.invalidateQueries({ queryKey: messageKeys.all });
+    queryClient.invalidateQueries({ queryKey: statsKeys.all });
   };
 
   const markRead = useMutation({
-    mutationFn: async ({ id, isRead }: { id: number; isRead: boolean }) => api.patch(`/messages/${id}/read`, { isRead }),
+    mutationFn: ({ id, isRead }: { id: number; isRead: boolean }) => setMessageRead(id, isRead),
     onSuccess: refresh,
     onError: (err) => toast.error(getErrorMessage(err)),
   });
 
   const remove = useMutation({
-    mutationFn: async (id: number) => api.delete(`/messages/${id}`),
+    mutationFn: deleteMessage,
     onSuccess: () => {
       toast.success("Message deleted");
       refresh();
@@ -99,9 +93,8 @@ export function Messages() {
                         </button>
                         <button
                           className="btn btn-outline btn-sm danger"
-                          onClick={() => {
-                            if (confirm("Delete this message?")) remove.mutate(m.id);
-                          }}
+                          onClick={() => remove.mutate(m.id)}
+                          disabled={remove.isPending}
                         >
                           <Trash2 size={16} /> Delete
                         </button>

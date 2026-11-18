@@ -1,17 +1,19 @@
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, ImagePlus } from "lucide-react";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import toast from "react-hot-toast";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { z } from "zod";
+import { categoryKeys, useCategories } from "../api/category/queries";
+import { createProduct, updateProduct } from "../api/product/fetcher";
+import { productKeys, useProduct } from "../api/product/queries";
+import { statsKeys } from "../api/stats/queries";
 import { ErrorState, FieldError, PageTitle, Spinner } from "../components/ui";
-import { useCategories } from "../hooks/useCategories";
 import { useObjectUrl } from "../hooks/useObjectUrl";
-import { api, getErrorMessage } from "../lib/api";
+import { getErrorMessage } from "../lib/api";
 import { imageUrl } from "../lib/format";
-import type { Product } from "../lib/types";
 
 const schema = z.object({
   name: z.string().trim().min(2, "Name must be at least 2 characters").max(150),
@@ -35,11 +37,7 @@ export function ProductForm() {
   const [image, setImage] = useState<File | null>(null);
   const preview = useObjectUrl(image);
 
-  const existing = useQuery({
-    queryKey: ["product", id],
-    queryFn: async () => (await api.get<{ product: Product }>(`/products/${id}`)).data.product,
-    enabled: isEdit,
-  });
+  const existing = useProduct(id);
   const product = existing.data;
 
   const {
@@ -66,19 +64,14 @@ export function ProductForm() {
   });
 
   const save = useMutation({
-    mutationFn: async (values: FormValues) => {
-      const form = new FormData();
-      for (const [key, value] of Object.entries(values)) form.append(key, String(value ?? ""));
-      if (image) form.append("image", image);
-      const res = isEdit ? await api.put<{ product: Product }>(`/products/${id}`, form) : await api.post<{ product: Product }>("/products", form);
-      return res.data.product;
-    },
+    mutationFn: (values: FormValues) =>
+      isEdit ? updateProduct(id!, { ...values, image }) : createProduct({ ...values, image }),
     onSuccess: (saved) => {
       toast.success(isEdit ? "Product updated" : "Product created");
-      queryClient.invalidateQueries({ queryKey: ["products"] });
-      queryClient.invalidateQueries({ queryKey: ["categories"] });
-      queryClient.invalidateQueries({ queryKey: ["stats"] });
-      queryClient.setQueryData(["product", String(saved.id)], saved);
+      queryClient.invalidateQueries({ queryKey: productKeys.all });
+      queryClient.invalidateQueries({ queryKey: categoryKeys.all });
+      queryClient.invalidateQueries({ queryKey: statsKeys.all });
+      queryClient.setQueryData(productKeys.detail(saved.id), saved);
       navigate("/products");
     },
     onError: (err) => toast.error(getErrorMessage(err)),

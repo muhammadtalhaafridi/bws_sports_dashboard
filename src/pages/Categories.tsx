@@ -1,14 +1,18 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Pencil, Plus, Trash2 } from "lucide-react";
+import { ImagePlus, Pencil, Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import toast from "react-hot-toast";
 import { Link } from "react-router-dom";
 import { z } from "zod";
+import { createCategory, deleteCategory, updateCategory } from "../api/category/fetcher";
+import { categoryKeys, useCategories } from "../api/category/queries";
+import { productKeys } from "../api/product/queries";
 import { EmptyState, ErrorState, FieldError, Modal, PageTitle, Spinner } from "../components/ui";
-import { useCategories } from "../hooks/useCategories";
-import { api, getErrorMessage } from "../lib/api";
+import { useObjectUrl } from "../hooks/useObjectUrl";
+import { getErrorMessage } from "../lib/api";
+import { imageUrl } from "../lib/format";
 import type { Category } from "../lib/types";
 
 const schema = z.object({ name: z.string().trim().min(2, "Name must be at least 2 characters").max(50) });
@@ -21,15 +25,17 @@ export function Categories() {
   const [editing, setEditing] = useState<Category | "new" | null>(null);
 
   const refresh = () => {
-    queryClient.invalidateQueries({ queryKey: ["categories"] });
-    queryClient.invalidateQueries({ queryKey: ["products"] });
+    queryClient.invalidateQueries({ queryKey: categoryKeys.all });
+    queryClient.invalidateQueries({ queryKey: productKeys.all });
   };
 
   const remove = useMutation({
-    mutationFn: async (id: number) => api.delete(`/categories/${id}`),
-    onSuccess: () => {
-      toast.success("Category deleted");
-      refresh();
+    mutationFn: (category: Category) => deleteCategory(category.id),
+    onSuccess: async (_res, category) => {
+      // Reload the list on screen first, so the toast appears once the row is gone.
+      await queryClient.refetchQueries({ queryKey: categoryKeys.all, type: "active" });
+      queryClient.invalidateQueries({ queryKey: productKeys.all });
+      toast.success(`"${category.name}" category deleted`);
     },
     onError: (err) => toast.error(getErrorMessage(err)),
   });
@@ -38,7 +44,7 @@ export function Categories() {
     <>
       <PageTitle
         title="Categories"
-        subtitle="Groups shown in the shop filter and on the home page"
+        subtitle="Groups shown in the shop filter and, with their image, on the home page"
         actions={
           <button className="btn btn-primary" onClick={() => setEditing("new")}>
             <Plus size={18} /> Add category
@@ -59,6 +65,7 @@ export function Categories() {
               <thead>
                 <tr>
                   <th>ID</th>
+                  <th>Image</th>
                   <th>Name</th>
                   <th className="num">Products</th>
                   <th className="actions-col" aria-label="Actions" />
@@ -69,22 +76,27 @@ export function Categories() {
                   <tr key={c.id}>
                     <td className="muted">#{c.id}</td>
                     <td>
+                      {c.image ? (
+                        <img src={imageUrl(c.image)} alt={c.name} className="thumb category-thumb" loading="lazy" />
+                      ) : (
+                        <span className="muted small">No image</span>
+                      )}
+                    </td>
+                    <td>
                       <strong>{c.name}</strong>
                     </td>
                     <td className="num">
                       <Link to={`/products?category=${c.id}`}>{c.productCount ?? 0}</Link>
                     </td>
                     <td className="actions-col">
-                      <button className="icon-btn" onClick={() => setEditing(c)} aria-label={`Rename ${c.name}`}>
+                      <button className="icon-btn" onClick={() => setEditing(c)} aria-label={`Edit ${c.name}`}>
                         <Pencil size={16} />
                       </button>
                       <button
                         className="icon-btn danger"
                         aria-label={`Delete ${c.name}`}
-                        disabled={remove.isPending}
-                        onClick={() => {
-                          if (confirm(`Delete the "${c.name}" category?`)) remove.mutate(c.id);
-                        }}
+                        disabled={remove.isPending && remove.variables?.id === c.id}
+                        onClick={() => remove.mutate(c)}
                       >
                         <Trash2 size={16} />
                       </button>
@@ -117,25 +129,64 @@ function CategoryModal({ category, onClose, onSaved }: { category: Category | nu
     handleSubmit,
     formState: { errors },
   } = useForm<FormValues>({ resolver: zodResolver(schema), defaultValues: { name: category?.name ?? "" } });
+  const [image, setImage] = useState<File | null>(null);
+  const [removeImage, setRemoveImage] = useState(false);
+  const preview = useObjectUrl(image);
+  const currentImage = removeImage ? undefined : imageUrl(category?.image);
+  const shownImage = preview ?? currentImage;
 
   const save = useMutation({
-    mutationFn: async (values: FormValues) =>
-      category ? api.put(`/categories/${category.id}`, values) : api.post("/categories", values),
+    mutationFn: (values: FormValues) =>
+      category ? updateCategory(category.id, { ...values, image, removeImage }) : createCategory({ ...values, image }),
     onSuccess: () => {
-      toast.success(category ? "Category renamed" : "Category added");
+      toast.success(category ? "Category updated" : "Category added");
       onSaved();
     },
     onError: (err) => toast.error(getErrorMessage(err)),
   });
 
   return (
-    <Modal title={category ? "Rename category" : "Add category"} onClose={onClose}>
+    <Modal title={category ? "Edit category" : "Add category"} onClose={onClose}>
       <form className="form" onSubmit={handleSubmit((v) => save.mutate(v))} noValidate>
         <label className="field">
           <span>Name</span>
           <input className="input" autoFocus placeholder="e.g. Shoes" {...register("name")} />
           <FieldError message={errors.name?.message} />
         </label>
+        <div className="field">
+          <span>Image</span>
+          <label className="image-drop category-drop">
+            {shownImage ? <img src={shownImage} alt="" /> : <ImagePlus size={36} />}
+            <span>{image ? image.name : shownImage ? "Click to change image" : "Click to choose an image"}</span>
+            <input
+              type="file"
+              accept="image/jpeg,image/png,image/webp,image/gif"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                if (file.size > 2 * 1024 * 1024) toast.error("Image must be 2 MB or smaller");
+                else {
+                  setImage(file);
+                  setRemoveImage(false);
+                }
+                e.target.value = "";
+              }}
+            />
+          </label>
+          {(image || currentImage) && (
+            <button
+              type="button"
+              className="btn-link danger small"
+              onClick={() => {
+                if (image) setImage(null);
+                else setRemoveImage(true);
+              }}
+            >
+              {image ? "Cancel new image" : "Remove image"}
+            </button>
+          )}
+          <span className="muted small">Optional. JPG, PNG, WEBP or GIF up to 2 MB; a wide (4:3) picture looks best.</span>
+        </div>
         <div className="modal-actions">
           <button type="button" className="btn btn-outline" onClick={onClose}>
             Cancel

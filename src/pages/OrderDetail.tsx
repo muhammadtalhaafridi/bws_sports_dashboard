@@ -1,29 +1,30 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Mail, MapPin, Phone } from "lucide-react";
 import toast from "react-hot-toast";
 import { Link, useParams } from "react-router-dom";
+import { updateOrderStatus } from "../api/order/fetcher";
+import { orderKeys, useOrder } from "../api/order/queries";
+import { productKeys } from "../api/product/queries";
+import { statsKeys } from "../api/stats/queries";
 import { ProductImage } from "../components/ProductImage";
 import { ErrorState, PageTitle, Spinner, StatusBadge } from "../components/ui";
-import { api, getErrorMessage } from "../lib/api";
+import { getErrorMessage } from "../lib/api";
 import { formatDateTime, formatPrice, orderNumber, orderStatuses, statusLabel } from "../lib/format";
-import type { Order, OrderStatus } from "../lib/types";
+import type { OrderStatus } from "../lib/types";
 
 export function OrderDetail() {
   const { id } = useParams();
   const queryClient = useQueryClient();
 
-  const { data: order, isLoading, isError, error, refetch } = useQuery({
-    queryKey: ["order", id],
-    queryFn: async () => (await api.get<{ order: Order }>(`/orders/${id}`)).data.order,
-  });
+  const { data: order, isLoading, isError, error, refetch } = useOrder(id);
 
   const update = useMutation({
-    mutationFn: async (status: OrderStatus) => (await api.patch<{ order: Order }>(`/orders/${id}/status`, { status })).data.order,
+    mutationFn: (status: OrderStatus) => updateOrderStatus(id!, status),
     onSuccess: (updated) => {
-      queryClient.setQueryData(["order", id], updated);
-      queryClient.invalidateQueries({ queryKey: ["orders"] });
-      queryClient.invalidateQueries({ queryKey: ["stats"] });
-      queryClient.invalidateQueries({ queryKey: ["products"] });
+      queryClient.setQueryData(orderKeys.detail(id!), updated);
+      queryClient.invalidateQueries({ queryKey: orderKeys.all });
+      queryClient.invalidateQueries({ queryKey: statsKeys.all });
+      queryClient.invalidateQueries({ queryKey: productKeys.all });
       toast.success(`Order marked as ${statusLabel[updated.status].toLowerCase()}`);
     },
     onError: (err) => toast.error(getErrorMessage(err)),

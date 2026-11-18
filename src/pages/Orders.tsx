@@ -1,26 +1,17 @@
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
+import { useOrders } from "../api/order/queries";
 import { SearchBox } from "../components/SearchBox";
 import { EmptyState, ErrorState, PageTitle, Pager, Spinner, StatusBadge } from "../components/ui";
 import { useListParams } from "../hooks/useListParams";
-import { api, getErrorMessage } from "../lib/api";
+import { getErrorMessage } from "../lib/api";
 import { formatDateTime, formatPrice, orderNumber, orderStatuses, statusLabel } from "../lib/format";
-import type { AdminOrderRow, Pagination } from "../lib/types";
+import type { OrderStatus } from "../lib/types";
 
 export function Orders() {
   const { params, search, page, searchText, setSearchText, set } = useListParams();
-  const status = params.get("status") ?? "";
+  const status = (params.get("status") ?? "") as OrderStatus | "";
 
-  const { data, isLoading, isError, error, refetch } = useQuery({
-    queryKey: ["orders", { search, status, page }],
-    queryFn: async () =>
-      (
-        await api.get<{ orders: AdminOrderRow[]; pagination: Pagination }>("/orders", {
-          params: { search: search || undefined, status: status || undefined, page },
-        })
-      ).data,
-    placeholderData: keepPreviousData,
-  });
+  const { data, isLoading, isError, error, refetch } = useOrders({ search, status, page });
 
   return (
     <>

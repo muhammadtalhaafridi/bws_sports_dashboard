@@ -1,4 +1,3 @@
-import { useQuery } from "@tanstack/react-query";
 import {
   ExternalLink,
   FolderTree,
@@ -15,10 +14,10 @@ import { useState } from "react";
 import toast from "react-hot-toast";
 import { MdSportsCricket } from "react-icons/md";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
+import { useStats } from "../api/stats/queries";
 import { useAuth } from "../hooks/useAuth";
-import { api, WEBSITE_URL } from "../lib/api";
+import { WEBSITE_URL } from "../lib/api";
 import { imageUrl } from "../lib/format";
-import type { Stats } from "../lib/types";
 
 const nav = [
   { to: "/", label: "Overview", Icon: LayoutDashboard },
@@ -42,11 +41,7 @@ export function AdminLayout() {
   }
 
   // Shares the cache with the Overview page; used for the sidebar counters.
-  const { data: stats } = useQuery({
-    queryKey: ["stats"],
-    queryFn: async () => (await api.get<Stats>("/admin/stats")).data,
-    refetchInterval: 60 * 1000,
-  });
+  const { data: stats } = useStats({ refetchInterval: 60 * 1000 });
 
   const onLogout = () => {
     logout();

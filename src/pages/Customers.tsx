@@ -1,21 +1,15 @@
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
+import { useCustomers } from "../api/user/queries";
 import { SearchBox } from "../components/SearchBox";
 import { EmptyState, ErrorState, PageTitle, Pager, Spinner } from "../components/ui";
 import { useListParams } from "../hooks/useListParams";
-import { api, getErrorMessage } from "../lib/api";
+import { getErrorMessage } from "../lib/api";
 import { formatDate, imageUrl } from "../lib/format";
-import type { Customer, Pagination } from "../lib/types";
 
 export function Customers() {
   const { search, page, searchText, setSearchText, set } = useListParams();
 
-  const { data, isLoading, isError, error, refetch } = useQuery({
-    queryKey: ["users", { search, page }],
-    queryFn: async () =>
-      (await api.get<{ users: Customer[]; pagination: Pagination }>("/admin/users", { params: { search: search || undefined, page } })).data,
-    placeholderData: keepPreviousData,
-  });
+  const { data, isLoading, isError, error, refetch } = useCustomers({ search, page });
 
   return (
     <>

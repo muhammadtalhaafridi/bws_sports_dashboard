@@ -1,18 +1,14 @@
-import { useQuery } from "@tanstack/react-query";
 import { AlertTriangle, Banknote, Mail, Package, ShoppingBag, Users } from "lucide-react";
 import { Link } from "react-router-dom";
+import { useStats } from "../api/stats/queries";
 import { ProductImage } from "../components/ProductImage";
 import { SalesChart } from "../components/SalesChart";
 import { EmptyState, ErrorState, PageTitle, Spinner, StatusBadge } from "../components/ui";
-import { api, getErrorMessage } from "../lib/api";
+import { getErrorMessage } from "../lib/api";
 import { formatDate, formatPrice, orderNumber, orderStatuses, statusLabel } from "../lib/format";
-import type { Stats } from "../lib/types";
 
 export function Overview() {
-  const { data, isLoading, isError, error, refetch } = useQuery({
-    queryKey: ["stats"],
-    queryFn: async () => (await api.get<Stats>("/admin/stats")).data,
-  });
+  const { data, isLoading, isError, error, refetch } = useStats();
 
   if (isLoading) return <Spinner />;
   if (isError || !data) return <ErrorState message={getErrorMessage(error)} onRetry={() => refetch()} />;
