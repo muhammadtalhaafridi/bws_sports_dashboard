@@ -9,7 +9,7 @@ import { statsKeys } from "../api/stats/queries";
 import { ProductImage } from "../components/ProductImage";
 import { ErrorState, PageTitle, Spinner, StatusBadge } from "../components/ui";
 import { getErrorMessage } from "../lib/api";
-import { formatDateTime, formatPrice, orderNumber, orderStatuses, statusLabel } from "../lib/format";
+import { formatDateTime, formatPrice, orderNumber, orderStatuses, statusLabel, paymentSummary } from "../lib/format";
 import type { OrderStatus } from "../lib/types";
 
 export function OrderDetail() {
@@ -145,7 +145,10 @@ export function OrderDetail() {
                 <MapPin size={16} /> <span>{order.address}</span>
               </li>
             </ul>
-            <p className="muted small">Payment: {order.paymentMethod}</p>
+            <p className="muted small">
+              Payment: {paymentSummary(order)} · {order.paymentStatus === "PAID" ? "Paid" : "Unpaid"}
+              {order.cardholderName && <> · {order.cardholderName}</>}
+            </p>
           </section>
         </div>
       </div>
